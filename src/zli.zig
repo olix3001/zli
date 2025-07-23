@@ -1,6 +1,4 @@
 const std = @import("std");
-const Spinner = @import("lib/spin.zig");
-pub const SpinnerStyles = Spinner.SpinnerStyles;
 const builtin = @import("lib/builtin.zig");
 pub const styles = builtin.styles;
 
@@ -63,7 +61,6 @@ pub const CommandContext = struct {
     command: *Command,
     allocator: std.mem.Allocator,
     positional_args: []const []const u8,
-    spinner: *Spinner,
     data: ?*anyopaque = null,
 
     // TODO: fix panic: integer cast truncated bits - later im tired
@@ -158,8 +155,8 @@ pub const Command = struct {
 
     parent: ?*Command = null,
     allocator: std.mem.Allocator,
-    stdout: Writer = std.io.getStdOut().writer(),
-    stderr: Writer = std.io.getStdErr().writer(),
+    stdout: Writer,
+    stderr: Writer,
 
     pub fn init(allocator: std.mem.Allocator, options: CommandOptions, execFn: ExecFnToPass) !*Command {
         const cmd = try allocator.create(Command);
@@ -174,6 +171,8 @@ pub const Command = struct {
             .commands_by_shortcut = std.StringHashMap(*Command).init(allocator),
             .command_by_aliases = std.StringHashMap(*Command).init(allocator),
             .allocator = allocator,
+            .stdout = std.io.getStdOut().writer(),
+            .stderr = std.io.getStdErr().writer(),
         };
 
         const helpFlag: Flag = .{
@@ -800,9 +799,6 @@ pub const Command = struct {
         try cmd.parseArgsAndFlags(&args, &pos_args);
         cmd.parsePositionalArgs(&pos_args) catch std.process.exit(1);
 
-        const spinner = try Spinner.init(cmd.allocator, .{});
-        defer spinner.deinit();
-
         const root = self;
         const ctx = CommandContext{
             .root = root,
@@ -810,7 +806,6 @@ pub const Command = struct {
             .command = cmd,
             .allocator = cmd.allocator,
             .positional_args = pos_args.items,
-            .spinner = spinner,
             .data = context.data,
         };
 
@@ -1514,15 +1509,11 @@ test "CommandContext.flag: retrieves set flag value" {
     // Simulate setting a flag value
     try cmd.flag_values.put("port", .{ .Int = 3000 });
 
-    const spinner = try Spinner.init(cmd.allocator, .{});
-    defer spinner.deinit();
-
     const ctx = CommandContext{
         .root = cmd,
         .direct_parent = cmd,
         .command = cmd,
         .allocator = allocator,
-        .spinner = spinner,
         .positional_args = &[_][]const u8{},
     };
 
@@ -1544,15 +1535,11 @@ test "CommandContext.flag: fallback to default value" {
         .default_value = .{ .Bool = true },
     });
 
-    const spinner = try Spinner.init(cmd.allocator, .{});
-    defer spinner.deinit();
-
     const ctx = CommandContext{
         .root = cmd,
         .direct_parent = cmd,
         .command = cmd,
         .allocator = allocator,
-        .spinner = spinner,
         .positional_args = &[_][]const u8{},
     };
 
@@ -1581,14 +1568,11 @@ test "CommandContext.getArg: retrieves positional argument" {
     });
 
     const args = [_][]const u8{ "john", "secret123" };
-    const spinner = try Spinner.init(cmd.allocator, .{});
-    defer spinner.deinit();
     const ctx = CommandContext{
         .root = cmd,
         .direct_parent = cmd,
         .command = cmd,
         .allocator = allocator,
-        .spinner = spinner,
         .positional_args = &args,
     };
 
@@ -1619,15 +1603,11 @@ test "CommandContext.getArg: missing optional argument" {
 
     const args = [_][]const u8{"onlyRequired"};
 
-    const spinner = try Spinner.init(cmd.allocator, .{});
-    defer spinner.deinit();
-
     const ctx = CommandContext{
         .root = cmd,
         .direct_parent = cmd,
         .command = cmd,
         .allocator = allocator,
-        .spinner = spinner,
         .positional_args = &args,
     };
 
@@ -1650,15 +1630,11 @@ test "CommandContext.getContextData: type casting" {
 
     var data = TestData{ .value = 42, .name = "test" };
 
-    const spinner = try Spinner.init(cmd.allocator, .{});
-    defer spinner.deinit();
-
     const ctx = CommandContext{
         .root = cmd,
         .direct_parent = cmd,
         .command = cmd,
         .allocator = allocator,
-        .spinner = spinner,
         .positional_args = &[_][]const u8{},
         .data = &data,
     };
